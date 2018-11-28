@@ -12,12 +12,14 @@
 import log
 import json
 import codecs
-import time
+from queue import Queue
 import datetime
+import time
 from urllib import parse
 from urllib import request
 from bs4 import BeautifulSoup
 import string
+import threading
 
 logger = log.Logger().get_logger()
 
@@ -36,7 +38,38 @@ re_try = 3
 base_url = "https://xueshu.baidu.com/s?"
 
 
+def run_time(func):
+	def wrapper(*args, **kw):
+		start = datetime.datetime.now()
+		func(*args, **kw)
+		end = datetime.datetime.now()
+		logger.info('finished in {}s'.format(end - start))
+
+	return wrapper
+
+
 class Crawler():
+	def __init__(self, key_num, thread_num, fpath="english.csv", start_num=0, end_num=5):
+		self.queue = Queue()
+		self.key_num = key_num
+		self.thread_num = thread_num
+		self.start_num = start_num
+		self.end_num = end_num
+		self.fpath = fpath
+
+	def load_keywords(self):
+		'''
+		加载关键字
+
+		:param num:
+		:return:
+		'''
+		with codecs.open(self.fpath, 'r', encoding='utf-8') as f:
+			keywords = list(set(key.strip() for key in f.readlines()))
+
+		for k in keywords[:self.key_num]:
+			self.queue.put(k)
+
 	def download_html(self, url, retry):
 		'''
 		下载网页
@@ -156,7 +189,7 @@ class Crawler():
 				records.append(record)
 		return records
 
-	def begin(self, start_page=0, end_page=1):
+	def begin(self):
 		'''
 		开始抓取
 
@@ -166,19 +199,25 @@ class Crawler():
 		:return:
 		'''
 
-		keywords = crawler.load_keywords()[:2]
+		while not self.queue.empty():
+			key = self.queue.get()
 
-		for i, key in enumerate(["Deep Learning", "Computer Science"]):
-			logger.info("search keyword = {} {}/{} delay = 2".format(key, i + 1, len(keywords)))
+			logger.info("search keyword = {} delay = 2".format(key))
 			time.sleep(2)
 			# https://xueshu.baidu.com/s?wd=Deep+Learning&tn=SE_baiduxueshu_c1gjeupa&cl=3&ie=utf-8&bs=Deep+Learning&f=8&rsv_bp=1&rsv_sug2=0&sc_f_para=sc_tasktype%3D%7BfirstSimpleSearch%7D
 
-			# 分页查询
-			for page in range(start_page, end_page + 1):
-				logger.info("extract page = {} delay = 2".format(page))
-				time.sleep(2)
+			# 文件打开
+			fmode = "a"
+			fname = "{}.json".format(key)
+			fpath = "data/{}".format(fname)
+			fp = codecs.open(fpath, fmode, encoding='utf-8')
 
-				# 构造请求
+			# 分页查询
+			for page in range(self.start_num, self.end_num + 1):
+				logger.info("extract page = {} delay = 2".format(page))
+				# time.sleep(2)
+
+				# # 构造请求
 				query = {}
 				pn = page * 10
 				query['wd'] = parse.quote(key, safe=string.printable)
@@ -194,34 +233,32 @@ class Crawler():
 
 				logger.info("done with keyword = {} at page = {}".format(key, page))
 
-			self.save(key, records, True)
+			if records == []: continue
+			json.dump({key: records}, fp)
+			fp.close()
 
-			logger.info("done with keyword = {} {}/{} ".format(key, i, len(keywords)))
+			logger.info("done with keyword = {} ".format(key))
 
-	def save(self, keyword, records, append_mode):
-		fmode = "a" if append_mode else "w"
-		fname = "{}.json".format(keyword)
-		fpath = "data/{}".format(fname)
-		if records == []: return
-		with codecs.open(fpath, fmode, encoding='utf-8') as f:
-			json.dump({keyword: records}, f)
 
-	def load_keywords(self, fpath="english.csv"):
-		'''
-		加载关键词词表
+class MyThread(threading.Thread):
+	def __init__(self, name, target):
+		threading.Thread.__init__(self)
+		self.name = name
+		self.target = target
 
-		:return: 过滤之后的词表 [计算机技术,计算机技术,计算机技术]
-		'''
-		with codecs.open(fpath, 'r', encoding='utf-8') as f:
-			keywords = list(set(key.strip() for key in f.readlines()))
-			return keywords
+	@run_time
+	def run(self):
+		logger.info("current thread : {}".format(self.name))
+		self.target.begin()
+
+
+def run(crawler):
+	crawler.load_keywords()
+	for i in range(crawler.thread_num):
+		th = MyThread(str(i), crawler)
+		th.start()
 
 
 if __name__ == '__main__':
-	begin = datetime.datetime.now()
-
-	crawler = Crawler()
-	crawler.begin(start_page=0, end_page=0)  # 时间估计：2个关键字，5页（一页10条），约13min
-
-	end = datetime.datetime.now()
-	logger.info('finished in {}s'.format(end - begin))
+	crawler = Crawler(key_num=20, thread_num=10, fpath='english.csv', start_num=0, end_num=5)
+	run(crawler)
