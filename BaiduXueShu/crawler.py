@@ -34,7 +34,6 @@ headers = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"
 }
 
-
 base_url = "https://xueshu.baidu.com/s?"
 
 
@@ -49,7 +48,7 @@ def run_time(func):
 
 
 class Crawler():
-	def __init__(self, key_num=-1, thread_num=1, fpath="english.csv", start_num=0, end_num=5,retry=3,delay=2):
+	def __init__(self, key_num=-1, thread_num=1, fpath="english.csv", start_num=0, end_num=5, retry=3, delay=2):
 		self.queue = Queue()
 		self.key_num = key_num
 		self.thread_num = thread_num
@@ -70,7 +69,6 @@ class Crawler():
 			self.keywords = list(set(key.strip() for key in f.readlines()))
 			if self.key_num != -1:
 				self.keywords = self.keywords[:self.key_num]
-			print(len(self.keywords))
 
 	def init_url_queue(self):
 		'''
@@ -110,10 +108,10 @@ class Crawler():
 			html_doc = resp.read()
 			return html_doc
 		except Exception as e:
-			logger.error("failed and retry to download url {} delay = {}".format(url,self.delay))
+			logger.error("failed and retry to download url {} delay = {}".format(url, self.delay))
 			if self.retry > 0:
 				time.sleep(self.delay)
-				self.retry-=1
+				self.retry -= 1
 				return self.download_html(url)
 
 	def extract_full_organization(self, query):
@@ -184,7 +182,7 @@ class Crawler():
 		for i, result in enumerate(result_lists):
 			record = []
 
-			logger.info("extract for item = {}  delay = {}".format(i,self.delay))
+			logger.info("extract for item = {}  delay = {}".format(i, self.delay))
 			time.sleep(self.delay)
 
 			# 抽取论文题目paper_title和超链接total_href
@@ -226,13 +224,15 @@ class Crawler():
 
 		while not self.queue.empty():
 			key, url = self.queue.get()
-			logger.info("search url = {} delay = {}".format(url,self.delay))
+			logger.info("search url = {} delay = {}".format(url, self.delay))
 			time.sleep(self.delay)
 			# https://xueshu.baidu.com/s?wd=Deep+Learning&tn=SE_baiduxueshu_c1gjeupa&cl=3&ie=utf-8&bs=Deep+Learning&f=8&rsv_bp=1&rsv_sug2=0&sc_f_para=sc_tasktype%3D%7BfirstSimpleSearch%7D
 
 			# 文件打开
+			url_dict = parse.parse_qs(url)
+			url_pn = url_dict['pn'][0]
 			fmode = "a"
-			fname = "{}.json".format(key)
+			fname = "{}-{}.json".format(key, url_pn)
 			fpath = "data/{}".format(fname)
 			fp = codecs.open(fpath, fmode, encoding='utf-8')
 
@@ -245,7 +245,6 @@ class Crawler():
 			fp.close()
 
 			logger.info("done with keyword = {} ".format(key))
-
 
 	def run(self, crawler):
 		for i in range(crawler.thread_num):
@@ -268,8 +267,8 @@ class MyThread(threading.Thread):
 if __name__ == '__main__':
 	# queue size = [end-start+1] * key_nums
 	# 一个页面固定约 80 s
-	crawler = Crawler(key_num=1, thread_num=1, fpath='english.csv', start_num=0, end_num=5)
+	crawler = Crawler(key_num=2, thread_num=2, fpath='english.csv', start_num=0, end_num=1)
 	crawler.load_keywords()
 	crawler.init_url_queue()
 	crawler.run(crawler)
-	#print(crawler.queue.qsize())
+# print(crawler.queue.qsize())
