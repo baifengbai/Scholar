@@ -34,7 +34,7 @@ headers = {
 	"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"
 }
 
-re_try = 3
+
 base_url = "https://xueshu.baidu.com/s?"
 
 
@@ -49,13 +49,15 @@ def run_time(func):
 
 
 class Crawler():
-	def __init__(self, key_num, thread_num, fpath="english.csv", start_num=0, end_num=5):
+	def __init__(self, key_num=-1, thread_num=1, fpath="english.csv", start_num=0, end_num=5,retry=3,delay=2):
 		self.queue = Queue()
 		self.key_num = key_num
 		self.thread_num = thread_num
 		self.start_num = start_num
 		self.end_num = end_num
 		self.fpath = fpath
+		self.retry = retry
+		self.delay = delay
 
 	def load_keywords(self):
 		'''
@@ -65,12 +67,34 @@ class Crawler():
 		:return:
 		'''
 		with codecs.open(self.fpath, 'r', encoding='utf-8') as f:
-			keywords = list(set(key.strip() for key in f.readlines()))
+			self.keywords = list(set(key.strip() for key in f.readlines()))
+			if self.key_num != -1:
+				self.keywords = self.keywords[:self.key_num]
+			print(len(self.keywords))
 
-		for k in keywords[:self.key_num]:
-			self.queue.put(k)
+	def init_url_queue(self):
+		'''
+		初始化队列
 
-	def download_html(self, url, retry):
+		:return:
+		'''
+
+		for key in self.keywords:
+			# 分页查询
+			for page in range(self.start_num, self.end_num + 1):
+				# 构造请求
+				query = {}
+				pn = page * 10
+				query['wd'] = parse.quote(key, safe=string.printable)
+				query['pn'] = str(pn)
+				query = parse.urlencode(query)
+
+				# 构造地址
+				url = base_url + query
+
+				self.queue.put((key, url))
+
+	def download_html(self, url):
 		'''
 		下载网页
 
@@ -86,10 +110,11 @@ class Crawler():
 			html_doc = resp.read()
 			return html_doc
 		except Exception as e:
-			logger.error("failed and retry to download url {} delay = 2".format(url))
-			if retry > 0:
-				time.sleep(2)
-				return self.download_html(url, retry - 1)
+			logger.error("failed and retry to download url {} delay = {}".format(url,self.delay))
+			if self.retry > 0:
+				time.sleep(self.delay)
+				self.retry-=1
+				return self.download_html(url)
 
 	def extract_full_organization(self, query):
 		'''
@@ -126,8 +151,8 @@ class Crawler():
 		# 构造地址
 		url = base_url + query
 
-		html_doc = self.download_html(url, re_try)
-		soup = BeautifulSoup(html_doc, "lxml")
+		html_doc = self.download_html(url)
+		soup = BeautifulSoup(html_doc, "html.parser")
 
 		try:
 			# 获取左侧栏
@@ -152,15 +177,15 @@ class Crawler():
 		'''
 		records = []
 
-		soup = BeautifulSoup(html_doc, "lxml")
+		soup = BeautifulSoup(html_doc, "html.parser")
 		result_div = soup.find('div', id="bdxs_result_lists")
 		result_lists = result_div.find_all("div", class_="result sc_default_result xpath-log")
 
 		for i, result in enumerate(result_lists):
 			record = []
 
-			logger.info("extract for item = {}  delay = 2".format(i))
-			time.sleep(2)
+			logger.info("extract for item = {}  delay = {}".format(i,self.delay))
+			time.sleep(self.delay)
 
 			# 抽取论文题目paper_title和超链接total_href
 			h3 = result.find("h3")
@@ -175,7 +200,7 @@ class Crawler():
 			authors_qs = [x.get('href').strip()[3:] for x in authors_block]
 
 			for query in authors_qs:
-				time.sleep(1.5)
+				time.sleep(self.delay)
 				# 对query做一个预处理，截取部分留下
 				# /s?wd=author%3A%28Yann%20LeCun%29%20&tn=SE_baiduxueshu_c1gjeupa
 				# /s?wd=author%3A%28Yi%20Sun%29%20Dept.%20of%20Inf.%20Eng.%2C%20Chinese%20Univ.%20of%20Hong%20Kong%2C%20Hong%20Kong%2C%20China
@@ -200,10 +225,9 @@ class Crawler():
 		'''
 
 		while not self.queue.empty():
-			key = self.queue.get()
-
-			logger.info("search keyword = {} delay = 2".format(key))
-			time.sleep(2)
+			key, url = self.queue.get()
+			logger.info("search url = {} delay = {}".format(url,self.delay))
+			time.sleep(self.delay)
 			# https://xueshu.baidu.com/s?wd=Deep+Learning&tn=SE_baiduxueshu_c1gjeupa&cl=3&ie=utf-8&bs=Deep+Learning&f=8&rsv_bp=1&rsv_sug2=0&sc_f_para=sc_tasktype%3D%7BfirstSimpleSearch%7D
 
 			# 文件打开
@@ -212,32 +236,21 @@ class Crawler():
 			fpath = "data/{}".format(fname)
 			fp = codecs.open(fpath, fmode, encoding='utf-8')
 
-			# 分页查询
-			for page in range(self.start_num, self.end_num + 1):
-				logger.info("extract page = {} delay = 2".format(page))
-				# time.sleep(2)
+			html_doc = self.download_html(url)
 
-				# # 构造请求
-				query = {}
-				pn = page * 10
-				query['wd'] = parse.quote(key, safe=string.printable)
-				query['pn'] = str(pn)
-				query = parse.urlencode(query)
-
-				# 构造地址
-				url = base_url + query
-
-				html_doc = self.download_html(url, re_try)
-
-				records = self.extract_html_doc(html_doc)
-
-				logger.info("done with keyword = {} at page = {}".format(key, page))
+			records = self.extract_html_doc(html_doc)
 
 			if records == []: continue
 			json.dump({key: records}, fp)
 			fp.close()
 
 			logger.info("done with keyword = {} ".format(key))
+
+
+	def run(self, crawler):
+		for i in range(crawler.thread_num):
+			th = MyThread(str(i), crawler)
+			th.start()
 
 
 class MyThread(threading.Thread):
@@ -248,17 +261,15 @@ class MyThread(threading.Thread):
 
 	@run_time
 	def run(self):
-		logger.info("current thread : {}".format(self.name))
+		logger.info("create thread : {}".format(self.name))
 		self.target.begin()
 
 
-def run(crawler):
-	crawler.load_keywords()
-	for i in range(crawler.thread_num):
-		th = MyThread(str(i), crawler)
-		th.start()
-
-
 if __name__ == '__main__':
-	crawler = Crawler(key_num=20, thread_num=10, fpath='english.csv', start_num=0, end_num=5)
-	run(crawler)
+	# queue size = [end-start+1] * key_nums
+	# 一个页面固定约 80 s
+	crawler = Crawler(key_num=1, thread_num=1, fpath='english.csv', start_num=0, end_num=5)
+	crawler.load_keywords()
+	crawler.init_url_queue()
+	crawler.run(crawler)
+	#print(crawler.queue.qsize())
