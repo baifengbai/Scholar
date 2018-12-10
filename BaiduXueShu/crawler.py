@@ -20,11 +20,11 @@ from urllib import request
 from bs4 import BeautifulSoup
 import string
 import threading
+import random
 
 logger = log.Logger().get_logger()
 
 headers = {
-	'Host': 'xueshu.baidu.com',
 	'Referer': 'http://xueshu.baidu.com/',
 	"Upgrade-Insecure-Requests": "1",
 	"Connection": "keep-alive",
@@ -101,11 +101,23 @@ class Crawler():
 		:return:
 		'''
 		try:
+			proxy_list=[p.strip() for p in open('ProxyGetter/proxies.txt').readlines()]
+			proxy=random.choice(proxy_list)
+			proxy_handler = request.ProxyHandler({'http': proxy})
+			opener=request.build_opener(proxy_handler)
+			request.install_opener(opener)
+			logger.info('proxy = {}'.format(proxy))
+
 			req = request.Request(url=url, headers=headers)
 			resp = request.urlopen(req, timeout=5)
+			# resp = request.urlopen(url, timeout=5)
+			# resp=opener.open(url)
+
 			if resp.status != 200:
 				logger.error('url open error. url = {}'.format(url))
 			html_doc = resp.read()
+			if html_doc.strip() == '':
+				logger.error('NULL html_doc')
 			return html_doc
 		except Exception as e:
 			logger.error("failed and retry to download url {} delay = {}".format(url, self.delay))
@@ -150,7 +162,12 @@ class Crawler():
 		url = base_url + query
 
 		html_doc = self.download_html(url)
+
+		if html_doc.strip() == '':
+			return
+		
 		soup = BeautifulSoup(html_doc, "html.parser")
+
 
 		try:
 			# 获取左侧栏
