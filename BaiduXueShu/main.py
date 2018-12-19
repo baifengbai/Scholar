@@ -9,6 +9,7 @@
    Change Activity:2018/4/17:
 -------------------------------------------------
 """
+import argparse
 import log
 import json
 import codecs
@@ -48,7 +49,7 @@ def run_time(func):
 
 
 class Crawler():
-	def __init__(self, key_num=-1, thread_num=1, fpath="english.csv", start_num=0, end_num=5, retry=3, delay=2):
+	def __init__(self, key_num=-1, thread_num=1, fpath="keyword.csv", start_num=0, end_num=5, retry=3, delay=2):
 		self.queue = Queue()
 		self.key_num = key_num
 		self.thread_num = thread_num
@@ -282,10 +283,22 @@ class MyThread(threading.Thread):
 
 
 if __name__ == '__main__':
+	parser = argparse.ArgumentParser(description='Baidu Crawler')
+	parser.add_argument('--key-num', type=int, default=100, metavar='N',
+	                    help='input number of keywords (default: 100)')
+	parser.add_argument('--thread-num', type=int, default=10, metavar='N',
+	                    help='input number of thread (default: 10)')
+	parser.add_argument('--page-num', type=int, default=5, metavar='N',
+	                    help='input number of pages (default: 5)')
+
+	args = parser.parse_args()
+
+	logger.info("开始抓取:key_num={},thread_num={},page_num={}".format(args.key_num,args.thread_num,args.page_num))
+
 	# queue size = [end-start+1] * key_nums
-	# 一个页面固定约 80 s
-	crawler = Crawler(key_num=2, thread_num=2, fpath='english.csv', start_num=0, end_num=1)
+	
+	crawler = Crawler(key_num=args.key_num, thread_num=args.thread_num, fpath='keyword.csv', start_num=0, end_num=args.page_num)#一个页面固定约 80 s
 	crawler.load_keywords()
 	crawler.init_url_queue()
 	crawler.run(crawler)
-# print(crawler.queue.qsize())
+	
