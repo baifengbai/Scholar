@@ -10,6 +10,7 @@
 -------------------------------------------------
 """
 import argparse
+import os
 import log
 import json
 import codecs
@@ -81,7 +82,7 @@ class Crawler():
 
 		:return:
 		'''
-		print(self.keywords)
+		
 		for key in self.keywords:
 			try:
 				# 分页查询
@@ -100,7 +101,7 @@ class Crawler():
 					
 					# 构造地址
 					url = base_url + query
-					logger.info("init_url_queue ({},{})\n".format(key,url))
+					
 					self.queue.put((key, url))
 		
 			except socket.timeout as e:
@@ -235,7 +236,7 @@ class Crawler():
 			paper_title = h3.get_text().strip()
 			sub_href = h3.find('a').get('href')
 			total_href = "http://xueshu.baidu.com" + sub_href
-			logger.info('title = {}, url = {}'.format(paper_title, total_href))
+			# logger.info('title = {}, url = {}'.format(paper_title, total_href))
 
 			# 抽取作者信息
 			info = result.find('div', class_="sc_info")
@@ -245,7 +246,7 @@ class Crawler():
 			for query,author_block in zip(authors_qs,authors_block):
 				time.sleep(self.delay)
 				query=query.strip()
-				logger.info("author_query = {}".format(query))
+				# logger.info("author_query = {}".format(query))
 				query_dict = parse.parse_qs(query)
 				if query.startswith('ueshu.baidu.com/usercenter'):
 					#{'xueshu.baidu.com/usercenter/data/author?cmd': ['authoruri'],'wd': ['authoruri:(b2adafebea64e9b0) author:(张铃) 安徽大学人工智能研究所']}
@@ -269,11 +270,11 @@ class Crawler():
 					logger.error('query error : {}'.format(query))
 					continue
 	
-				logger.info('author = {}'.format(author))
-				logger.info('organizations = {}'.format(organizations))
+				# logger.info('author = {}'.format(author))
+				# logger.info('organizations = {}'.format(organizations))
 		
 				# 添加记录
-				# record.append((author, organizations))
+				record.append((author, organizations))
 				records.append(record)
 		return records
 
@@ -297,10 +298,7 @@ class Crawler():
 			# 文件打开
 			url_dict = parse.parse_qs(url)
 			url_pn = url_dict['pn'][0]
-			fmode = "a"
-			fname = "{}-{}.json".format('_'.join(key.split(' ')), url_pn)
-			fpath = "data/{}".format(fname)
-			fp = codecs.open(fpath, fmode, encoding='utf-8')
+			
 
 			html_doc = self.download_html(url)
 
@@ -311,15 +309,21 @@ class Crawler():
 
 			if records == []: 
 				continue
-			
+
+			fmode = "a"
+			fname = "{}-{}.json".format('_'.join(key.split(' ')), url_pn)
+			fpath = "data/{}".format(fname)
+			if os.path.exists(fpath) and os.path.getsize(fpath)==0:
+				continue
+			fp = codecs.open(fpath, fmode, encoding='utf-8')
 			json.dump({key: records}, fp)
 			fp.close()
 
 			logger.info("done with keyword = {} ".format(key))
 
-	def run(self, crawler):
-		for i in range(crawler.thread_num):
-			th = MyThread(str(i), crawler)
+	def run(self):
+		for i in range(self.thread_num):
+			th = MyThread(str(i), self)
 			th.start()
 
 
@@ -362,5 +366,7 @@ if __name__ == '__main__':
 	crawler.load_keywords()
 	crawler.init_url_queue()
 	
-	crawler.run(crawler)
+	time.sleep(5)
+	
+	crawler.run()
 	
